@@ -41,5 +41,4 @@ class AmiCreate(BaseModel):
 class Prêt(BaseModel):
     exemplaire_id: int
     ami_id: int
-    date_pret: str
-    date_retour: Optional[str] = None
+    date_pret: Optional[str] = None

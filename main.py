@@ -137,9 +137,13 @@ def create_livre_complet(livre: LivreComplet):
 @app.get("/livres/")
 def read_livres():
     conn = get_db()
-    req = conn.execute("SELECT * FROM livre").fetchall()
-    conn.close()
-    return [dict(row) for row in req]
+    try:
+        req = conn.execute("SELECT * FROM livre").fetchall()
+        return [dict(row) for row in req]
+    except Exception as e:
+        return {"success": False, "message": f"Erreur: {e}"}
+    finally:
+        conn.close()
 
 @app.get("/livres/{livre_id}")
 def read_livre(livre_id: int):
@@ -247,6 +251,29 @@ def create_ami(ami: AmiCreate):
 def create_pret(pret: Prêt):
     conn = get_db()
     try:
+        # verif que l'exemplaire existe
+        exemplaire = conn.execute(
+            "SELECT id FROM exemplaire WHERE id = ?", (pret.exemplaire_id,)
+        ).fetchone()
+        if not exemplaire:
+            return {"success": False, "message": "Exemplaire non trouvé"}
+        
+        # Vérif que l'ami existe bien
+        ami = conn.execute(
+            "SELECT id FROM ami WHERE id = ?", (pret.ami_id,)
+        ).fetchone()
+        if not ami:
+            return {"success": False, "message": "Ami non trouvé"}
+        
+        # Vérif que exemplaire pas déjà prêté
+        deja_prete = conn.execute(
+            "SELECT id FROM pret WHERE exemplaire_id = ? AND date_retour IS NULL",
+            (pret.exemplaire_id,)
+        ).fetchone()
+        if deja_prete:
+            return {"success": False, "message": "Exemplaire déjà emprunté"}
+        
+        # si ok faire le prêt
         req = conn.execute(
             """
             INSERT INTO pret (exemplaire_id, ami_id, date_pret)
@@ -256,7 +283,58 @@ def create_pret(pret: Prêt):
         )
         conn.commit()
         return {"success": True, "message": "Prêt créé", "id": req.lastrowid}
+        
     except sqlite3.IntegrityError as e:
+        return {"success": False, "message": f"Erreur d'intégrité: {e}"}
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": f"Erreur: {e}"}
+    finally:
+        conn.close()
+        
+@app.get("/prets/")
+def read_prets():
+    conn = get_db()
+    try:
+        req = conn.execute("SELECT * FROM pret").fetchall()
+        return [dict(row) for row in req]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur: {e}")
+    finally:
+        conn.close()
+
+@app.get("/prets/en-cours")
+def read_prets_en_cours():
+    conn = get_db()
+    req = conn.execute("""
+        SELECT pret.*, ami.nom as ami_nom, livre.titre
+        FROM pret
+        JOIN ami ON pret.ami_id = ami.id
+        JOIN exemplaire ON pret.exemplaire_id = exemplaire.id
+        JOIN edition ON exemplaire.edition_id = edition.id
+        JOIN livre ON edition.livre_id = livre.id
+        WHERE pret.date_retour IS NULL
+    """).fetchall()
+    conn.close()
+    return [dict(row) for row in req]
+
+@app.delete("/prets/{pret_id}/")
+def retour_pret(pret_id: int):
+    conn = get_db()
+    try:
+        req = conn.execute(
+            """
+            DELETE FROM pret
+            WHERE id = ? AND date_retour IS NULL
+            """,
+            (pret_id,)
+        )
+        if req.rowcount == 0:
+            return {"success": False, "message": "Prêt non trouvé ou déjà retourné"}
+        conn.commit()
+        return {"success": True, "message": "Prêt retourné avec succès"}
+    except Exception as e:
+        conn.rollback()
         return {"success": False, "message": f"Erreur: {e}"}
     finally:
         conn.close()
