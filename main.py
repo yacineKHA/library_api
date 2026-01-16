@@ -122,6 +122,15 @@ def create_livre_complet(livre: LivreComplet):
                 None
             )
         )
+        
+        # Image
+        conn.execute(
+            "INSERT INTO image (url, livre_id) VALUES (?, ?)",
+            (livre.image.url, livre_id)
+        )
+
+        conn.commit()
+        return {"success": True, "livre_id": livre_id}
 
         conn.commit()
         return {"success": True, "livre_id": livre_id}
@@ -133,6 +142,7 @@ def create_livre_complet(livre: LivreComplet):
     finally:
         conn.close()
 
+        
 
 @app.get("/livres/")
 def read_livres():
@@ -335,6 +345,30 @@ def retour_pret(pret_id: int):
         return {"success": True, "message": "Prêt retourné avec succès"}
     except Exception as e:
         conn.rollback()
+        return {"success": False, "message": f"Erreur: {e}"}
+    finally:
+        conn.close()
+
+
+@app.post("/livres/{livre_id}/images/")
+def add_image_to_livre(livre_id: int, url: str):
+    conn = get_db()
+    try:
+        # Vérifier que le livre existe
+        livre = conn.execute(
+            "SELECT id FROM livre WHERE id = ?", (livre_id,)
+        ).fetchone()
+        if not livre:
+            return {"success": False, "message": "Livre non trouvé"}
+
+        # Ajouter l'image
+        req = conn.execute(
+            "INSERT INTO image (url, livre_id) VALUES (?, ?)",
+            (url, livre_id)
+        )
+        conn.commit()
+        return {"success": True, "message": "Image ajoutée au livre", "id": req.lastrowid}
+    except sqlite3.IntegrityError as e:
         return {"success": False, "message": f"Erreur: {e}"}
     finally:
         conn.close()

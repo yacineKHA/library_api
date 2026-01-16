@@ -86,3 +86,11 @@ CREATE TABLE pret (
   FOREIGN KEY (exemplaire_id) REFERENCES exemplaire(id) ON DELETE CASCADE,
   FOREIGN KEY (ami_id) REFERENCES ami(id)
 );
+
+CREATE TABLE image (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  url TEXT NOT NULL,
+  livre_id INTEGER NOT NULL,
+  FOREIGN KEY (livre_id) REFERENCES livre(id) ON DELETE CASCADE
+);
+
