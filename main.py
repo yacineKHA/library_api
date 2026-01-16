@@ -1,8 +1,13 @@
 from datetime import date
+import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File
+from fastapi.staticfiles import StaticFiles
 from models.models import AmiCreate, Auteur, Genre, Livre, LivreComplet, Prêt
 import sqlite3
+import os
+
 
 app = FastAPI(title="Library API")
 DB = "library.db"
@@ -10,6 +15,12 @@ DB = "library.db"
 origins = [
     "http://localhost:5173",
 ]
+
+UPLOAD_DIR = "images"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -122,18 +133,12 @@ def create_livre_complet(livre: LivreComplet):
                 None
             )
         )
-        
-        # Image
-        conn.execute(
-            "INSERT INTO image (url, livre_id) VALUES (?, ?)",
-            (livre.image.url, livre_id)
-        )
+
+       
 
         conn.commit()
         return {"success": True, "livre_id": livre_id}
 
-        conn.commit()
-        return {"success": True, "livre_id": livre_id}
 
     except Exception as e:
         conn.rollback() #annule les requetes si erreurs
@@ -350,25 +355,31 @@ def retour_pret(pret_id: int):
         conn.close()
 
 
-@app.post("/livres/{livre_id}/images/")
-def add_image_to_livre(livre_id: int, url: str):
+@app.post("/livres/{livre_id}/images")
+async def upload_image(livre_id: int, file: UploadFile = File(...)):
     conn = get_db()
     try:
-        # Vérifier que le livre existe
-        livre = conn.execute(
-            "SELECT id FROM livre WHERE id = ?", (livre_id,)
-        ).fetchone()
+        livre = conn.execute("SELECT id FROM livre WHERE id = ?", (livre_id,)).fetchone()
         if not livre:
-            return {"success": False, "message": "Livre non trouvé"}
+            raise HTTPException(status_code=404, detail="Livre non trouvé")
 
-        # Ajouter l'image
-        req = conn.execute(
-            "INSERT INTO image (url, livre_id) VALUES (?, ?)",
-            (url, livre_id)
-        )
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+            raise HTTPException(status_code=400, detail="Format non supporté")
+
+        filename = f"livre_{livre_id}_{uuid.uuid4().hex}{ext}"
+        filepath = os.path.join(UPLOAD_DIR, filename)
+
+        content = await file.read()
+        with open(filepath, "wb") as f:
+            f.write(content)
+
+        image_url = f"/images/{filename}"
+
+        conn.execute("UPDATE livre SET image_url = ? WHERE id = ?", (image_url, livre_id))
+
         conn.commit()
-        return {"success": True, "message": "Image ajoutée au livre", "id": req.lastrowid}
-    except sqlite3.IntegrityError as e:
-        return {"success": False, "message": f"Erreur: {e}"}
+        return {"success": True, "image_url": image_url}
+
     finally:
         conn.close()

@@ -37,6 +37,7 @@ CREATE TABLE livre (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   titre TEXT NOT NULL,
   resume TEXT,
+  image_url TEXT,
   annee_publication INTEGER,
   serie_id INTEGER,
   FOREIGN KEY (serie_id) REFERENCES serie(id)
