@@ -19,7 +19,6 @@ origins = [
 UPLOAD_DIR = "images"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-app.mount("/images", StaticFiles(directory="images"), name="images")
 
 
 app.add_middleware(
@@ -29,6 +28,9 @@ app.add_middleware(
     allow_methods=["*"], 
     allow_headers=["*"],    
 )
+
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
 
 # connexion à la bdd
 def get_db():
@@ -153,8 +155,24 @@ def create_livre_complet(livre: LivreComplet):
 def read_livres():
     conn = get_db()
     try:
-        req = conn.execute("SELECT * FROM livre").fetchall()
-        return [dict(row) for row in req]
+        req = conn.execute("""
+            SELECT 
+                livre.*,
+                edition.isbn,
+                edition.nom as edition_nom,
+                editeur.nom as editeur_nom,
+                exemplaire.etat
+            FROM livre
+            LEFT JOIN edition ON edition.livre_id = livre.id
+            LEFT JOIN editeur ON edition.editeur_id = editeur.id
+            LEFT JOIN exemplaire ON exemplaire.edition_id = edition.id
+            GROUP BY livre.id
+        """).fetchall()
+        return {
+            "success": True,
+            "message": "Livres récupérés",
+            "data": [dict(row) for row in req]
+        }
     except Exception as e:
         return {"success": False, "message": f"Erreur: {e}"}
     finally:
